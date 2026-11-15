@@ -1,0 +1,50 @@
+{
+  "name": "Forge Info Go Dev",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/forge-info",
+
+  // No host files are mounted by default. Mounting ~/.claude and ~/.claude.json
+  // shares live Claude Code credentials with a container that runs this
+  // repository's code, which is a decision each contributor should make
+  // deliberately rather than inherit from a checkout. To opt in on your own
+  // machine, uncomment the block below — and note that editing this tracked file
+  // will show up in `git status`.
+  //
+  // "initializeCommand": "mkdir -p ~/.claude && touch ~/.claude.json ~/.gitconfig 2>/dev/null || true",
+  // "mounts": [
+  //   "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind",
+  //   "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind",
+  //   "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind"
+  // ],
+
+  "features": {
+    "ghcr.io/jsburckhardt/devcontainer-features/gitleaks:1": {}
+  },
+  "postStartCommand": "claude update --yes || true",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "claudeCode.preferredLocation": "panel",
+        "claudeCode.useCtrlEnterToSend": true,
+        "go.toolsManagement.autoUpdate": true,
+        "editor.formatOnSave": true,
+        "[go]": {
+          "editor.defaultFormatter": "golang.go",
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+          }
+        },
+        "[markdown]": {
+          "editor.formatOnSave": false
+        }
+      }
+    }
+  }
+}
