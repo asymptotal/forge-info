@@ -98,7 +98,8 @@ One shape for both, with the same codes:
 
 - **Writes** return the first failure, checking in this order: name, tags, description, body.
 - **Reads** report every problem in every broken file, as `problems`. `path` is relative to the root, and the list is sorted by path, then code.
-- **Tool errors** set `isError: true` and carry the JSON as text content. Whether they can also go in `structuredContent` without breaking the output schema needs a spike against go-sdk first.
+- **Tool errors** set `isError: true` and carry the JSON as text content only, with no `structuredContent`. In go-sdk, the handler returns a Go `error` whose `Error()` is that JSON. This is the only way that works with typed, schema-checked outputs.
+- **Malformed arguments** (a missing field, a wrong type, an unknown property) are rejected by the SDK's input schema before the handler runs, with the SDK's own plain-text message. `invalid_input` covers the checks the schema can't express, such as `limit` being out of range.
 
 ## 5. Tools
 
