@@ -14,7 +14,7 @@ import (
 const (
 	entriesDir   = "entries"
 	tagsDir      = "tags"
-	defaultLimit = 50
+	DefaultLimit = 50
 	maxLimit     = 200
 )
 
@@ -413,11 +413,8 @@ func hasTag(tags []string, name string) bool {
 
 // ---- entry tools ---------------------------------------------------------------
 
-// Search implements entry_search. limit 0 means the default (50).
+// Search implements entry_search. Callers apply the default (DefaultLimit).
 func (s *Store) Search(query string, tags []string, limit int) (*SearchResult, error) {
-	if limit == 0 {
-		limit = defaultLimit
-	}
 	if limit < 1 || limit > maxLimit {
 		return nil, newProblem(CodeInvalidInput, "", "limit must be between 1 and %d", maxLimit)
 	}

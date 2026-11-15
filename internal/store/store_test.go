@@ -237,7 +237,7 @@ func TestBrokenFilesOfEachKind(t *testing.T) {
 	put(t, s, "tags/empty.md", "  \n")
 	put(t, s, "tags/.hidden.md", "x")
 
-	res, err := s.Search("", nil, 0)
+	res, err := s.Search("", nil, DefaultLimit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestSymlinks(t *testing.T) {
 	os.Symlink(outDir, filepath.Join(s.root, "entries", "dirlink"))
 	os.Symlink(outside, filepath.Join(s.root, "tags", "tl.md"))
 
-	res, _ := s.Search("", nil, 0)
+	res, _ := s.Search("", nil, DefaultLimit)
 	if len(res.Entries) != 0 {
 		t.Errorf("symlinked entries served: %v", ids(res))
 	}
@@ -368,7 +368,7 @@ func TestDotfilesIgnored(t *testing.T) {
 	put(t, s, "entries/.tmp-123", "x")
 	put(t, s, "entries/sub/.gitkeep", "")
 	put(t, s, "tags/.DS_Store", "x")
-	res, _ := s.Search("", nil, 0)
+	res, _ := s.Search("", nil, DefaultLimit)
 	if len(res.Problems) != 0 || len(res.Entries) != 0 {
 		t.Errorf("%+v", res)
 	}
@@ -407,7 +407,7 @@ func TestNestingLimit(t *testing.T) {
 	if _, err := s.AddEntry("a/b/c/d", "d", []string{"a"}, "b"); code(err) != CodeInvalid {
 		t.Errorf("4 segments: %v", err)
 	}
-	res, _ := s.Search("", nil, 0)
+	res, _ := s.Search("", nil, DefaultLimit)
 	if !reflect.DeepEqual(ids(res), []string{"a/b/c"}) || len(res.Problems) != 0 {
 		t.Errorf("%+v", res)
 	}
@@ -479,7 +479,7 @@ func TestUnknownTags(t *testing.T) {
 	if !errors.As(err, &p) || p.Code != CodeUnknownTag || !reflect.DeepEqual(p.Details["tags"], []string{"ghost", "ghost2"}) {
 		t.Errorf("add: %v", err)
 	}
-	if _, err := s.Search("", []string{"ghost"}, 0); code(err) != CodeUnknownTag {
+	if _, err := s.Search("", []string{"ghost"}, DefaultLimit); code(err) != CodeUnknownTag {
 		t.Errorf("search: %v", err)
 	}
 	if exists(s, "entries/e.md") {
@@ -510,17 +510,17 @@ func TestSearch(t *testing.T) {
 		total int
 		trunc bool
 	}{
-		{"no query by id", "", nil, 0, []string{"a-entry", "b-entry", "c-entry", "z/dog"}, 4, false},
-		{"score then id", "cat", nil, 0, []string{"b-entry", "a-entry", "c-entry"}, 3, false}, // b: 1+1(desc)+3=... highest first
-		{"case insensitive", "CATS", nil, 0, []string{"a-entry", "b-entry", "c-entry"}, 3, false},
-		{"all terms", "cats dogs", nil, 0, []string{"c-entry"}, 1, false},
-		{"matches id", "z/d", nil, 0, []string{"z/dog"}, 1, false},
-		{"matches tag name", "beta", nil, 0, []string{"c-entry", "z/dog"}, 2, false},
-		{"tag filter", "", []string{"Alpha", "beta"}, 0, []string{"c-entry"}, 1, false},
+		{"no query by id", "", nil, DefaultLimit, []string{"a-entry", "b-entry", "c-entry", "z/dog"}, 4, false},
+		{"score then id", "cat", nil, DefaultLimit, []string{"b-entry", "a-entry", "c-entry"}, 3, false}, // b: 1+1(desc)+3=... highest first
+		{"case insensitive", "CATS", nil, DefaultLimit, []string{"a-entry", "b-entry", "c-entry"}, 3, false},
+		{"all terms", "cats dogs", nil, DefaultLimit, []string{"c-entry"}, 1, false},
+		{"matches id", "z/d", nil, DefaultLimit, []string{"z/dog"}, 1, false},
+		{"matches tag name", "beta", nil, DefaultLimit, []string{"c-entry", "z/dog"}, 2, false},
+		{"tag filter", "", []string{"Alpha", "beta"}, DefaultLimit, []string{"c-entry"}, 1, false},
 		{"limit", "", nil, 2, []string{"a-entry", "b-entry"}, 4, true},
 		{"limit exact", "", nil, 4, []string{"a-entry", "b-entry", "c-entry", "z/dog"}, 4, false},
-		{"no match", "zzz", nil, 0, []string{}, 0, false},
-		{"whitespace query", "  \t ", nil, 0, []string{"a-entry", "b-entry", "c-entry", "z/dog"}, 4, false},
+		{"no match", "zzz", nil, DefaultLimit, []string{}, 0, false},
+		{"whitespace query", "  \t ", nil, DefaultLimit, []string{"a-entry", "b-entry", "c-entry", "z/dog"}, 4, false},
 	}
 	for _, tt := range tests {
 		r, err := s.Search(tt.q, tt.tags, tt.limit)
@@ -555,7 +555,7 @@ func TestCaseInsensitiveInput(t *testing.T) {
 	if err != nil || g.Entry == nil || g.Entry.ID != "mixed/case.id" {
 		t.Errorf("get: %+v %v", g, err)
 	}
-	if r, _ := s.Search("", []string{"mytag"}, 0); r.Total != 1 {
+	if r, _ := s.Search("", []string{"mytag"}, DefaultLimit); r.Total != 1 {
 		t.Error("search by tag")
 	}
 	if _, err := s.DropEntry("MIXED/CASE.ID"); err != nil {
