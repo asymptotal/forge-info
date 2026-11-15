@@ -1,4 +1,4 @@
-# infomcp: technical design (MVP)
+# forge-info-mcp: technical design (MVP)
 
 How the [PRD](PRD.md) is built. Where this document is silent, apply the shared rules in §3 and §4; don't invent case-by-case behaviour.
 
@@ -16,7 +16,8 @@ How the [PRD](PRD.md) is built. Where this document is silent, apply the shared 
 
 - **Root:** `--root <dir>` names the `.info` directory explicitly. Without it, the server walks up from the working directory to the first `.info`. If that directory doesn't contain `entries/` and `tags/`, the server refuses to start.
 - **`init [<dir>]`** creates `<dir>/.info/entries/.gitkeep` and `<dir>/.info/tags/.gitkeep`. It fails if `.info` already exists.
-- Names starting with `.` are ignored everywhere (`.gitkeep`, `.DS_Store`, temp files).
+- **Managed files:** forge-info-mcp owns every regular file whose name ends in `.md` and doesn't start with `.`, found directly in `tags/` or in `entries/` through directories that are neither symlinks nor dot-named. Everything else is ignored: never reported, served, written or deleted (`.gitkeep`, `.DS_Store`, temp files, `README.txt`, symlinks, subdirectories of `tags/`).
+- A managed file whose path isn't a valid name (wrong case, too deep, a Windows device name) is reported as `invalid` with `reason: bad_name`. The tools can't rename files, so a person must rename or remove it.
 
 ## 2. File formats
 
@@ -71,7 +72,7 @@ Every input, whether a tool argument or a value read from a file, goes through t
 
 **Tag lists** (`checkTags`): 1–5 tags, each a valid name, no duplicates, each existing. A tag **exists** if `tags/<name>.md` is a regular file with a valid name, even if its description is broken.
 
-**Paths** (`resolve`): a path is only ever built from a name that passed `checkName`. Inside the root, symlinks are never followed; any symlink encountered is a `stray_file`. On case-insensitive file systems a lookup must also confirm the exact name on disk (by listing the directory), so `FOO.md` is never served as `foo`.
+**Paths** (`resolve`): a path is only ever built from a name that passed `checkName`. Inside the root, symlinks are never followed. A lookup confirms the exact name on disk by listing each directory, so `FOO.md` is never served as `foo`, on any file system. If the path is blocked (a symlink, a file where a directory is needed, or a name differing only in case), reads and drops treat the target as not found, and `_add`/`_update` fail with `conflict` so nothing a person owns is overwritten.
 
 **Writes** (`writeFile`): write to a `.`-prefixed temp file in the target directory, then rename it into place. Parent directories are created as needed. Directories that `entry_drop` leaves empty are removed, up to `entries/`. A directory still holding only dotfiles is left in place.
 
@@ -86,19 +87,20 @@ One shape for both, with the same codes:
 
 | Code | Meaning |
 |---|---|
-| `invalid` | A field fails §3. `details.field` names it, and `details.reason` is one of `empty`, `too_long`, `multiline`, `bad_name`, `too_many_tags`, `duplicate_tag`. |
+| `invalid` | A field fails §3. `details.field` names it, and `details.reason` is one of `empty`, `too_long`, `multiline`, `bad_name`, `too_many_tags`, `duplicate_tag`. For a managed file with an invalid name (§1), `field` is `id` or `name` and `reason` is `bad_name`. |
 | `unknown_tag` | A named tag doesn't exist. `details.tags` lists them. |
 | `parse_error` | An entry's frontmatter doesn't follow §2 (files only). |
-| `stray_file` | Not a regular `.md` file, too deeply nested, a directory under `tags/`, or a symlink (files only). |
 | `not_found` | The target entry or tag doesn't exist. |
 | `exists` | The `_add` target already exists, valid or broken. |
+| `conflict` | A write's target path is blocked by something forge-info-mcp can't address exactly (§3 Paths) (writes only). |
 | `tag_in_use` | `tag_drop` on a tag that valid entries use. `details.entries` lists them. |
 | `invalid_input` | Bad tool arguments, e.g. `limit` out of range. |
 | `io_error` | The file system failed. |
 
 - **Writes** return the first failure, checking in this order: name, tags, description, body.
-- **Reads** report every problem in every broken file, as `problems`. `path` is relative to the root, and the list is sorted by path, then code.
-- **Tool errors** set `isError: true` and carry the JSON as text content. Whether they can also go in `structuredContent` without breaking the output schema needs a spike against go-sdk first.
+- **Reads** report every problem in every broken managed file, as `problems`. `path` is relative to the root, and the list is sorted by path, then code.
+- **Tool errors** set `isError: true` and carry the JSON as text content only, with no `structuredContent`. In go-sdk, the handler returns a Go `error` whose `Error()` is that JSON. This is the only way that works with typed, schema-checked outputs.
+- **Malformed arguments** (a missing field, a wrong type, an unknown property) are rejected by the SDK's input schema before the handler runs, with the SDK's own plain-text message. `invalid_input` covers the checks the schema can't express, such as `limit` being out of range.
 
 ## 5. Tools
 
@@ -111,12 +113,12 @@ Every read result includes `problems` (possibly empty). Results use `structuredC
 | Tool | Input | Returns | Notes |
 |---|---|---|---|
 | `entry_search` | `query?`, `tags?`, `limit` = 50 (1–200) | `{total, truncated, entries: [summary], problems}` | Broken entries are left out; every broken file in the store is reported. |
-| `entry_get` | `id` | `{entry, problems}`, or `{entry: null, problems, raw}` if broken | Checks only this file. No `raw` for a `stray_file`. |
-| `entry_add` | `id`, `description`, `tags`, `body` | entry | Fails with `exists`. |
+| `entry_get` | `id` | `{entry, problems}`, or `{entry: null, problems, raw}` if broken | Checks only this file. |
+| `entry_add` | `id`, `description`, `tags`, `body` | entry | Fails with `exists` or `conflict`. |
 | `entry_update` | same as `entry_add` | `{changed, entry}` | Replaces the entry, broken or not. If the canonical bytes are unchanged, `changed` is false and nothing is written. |
 | `entry_drop` | `id` | `{id}` | Works on broken entries. |
 | `tag_list` | none | `{tags: [tag], problems}` | Sorted by name. A broken description is shown as `null`. |
-| `tag_add` | `name`, `description` | tag | Fails with `exists`. |
+| `tag_add` | `name`, `description` | tag | Fails with `exists` or `conflict`. |
 | `tag_update` | `name`, `description` | `{changed, tag}` | Works on broken tags. |
 | `tag_drop` | `name` | `{name}` | Fails with `tag_in_use` if valid entries use it. Works on broken tags. |
 
@@ -140,7 +142,7 @@ Each tool description restates the rules that apply to it.
 ## 6. Code layout
 
 ```
-cmd/infomcp/        CLI: serve, init; exit 0 on success, 2 on error
+cmd/forge-info-mcp/ CLI: serve, init, version; exit 0 on success, 2 on error
 internal/store/     validate.go (§3), format.go (parse/render), store.go (scan, CRUD)
 internal/server/    MCP tools, schemas, instructions; thin wrapper over store
 ```
@@ -152,6 +154,11 @@ internal/server/    MCP tools, schemas, instructions; thin wrapper over store
 ## 7. Testing
 
 - **Unit tests:** table-driven tests for `validate` and `format`, including round trips (parse ∘ render = identity on canonical files).
-- **Store tests:** run against `t.TempDir()` fixtures, covering broken files, symlinks and dotfiles.
+- **Store tests:** run against `t.TempDir()` fixtures, covering broken managed files, invalid file names, and ignored files (symlinks, dotfiles, non-`.md` files).
 - **Server tests:** end to end over the SDK's in-memory transport.
 - **CI:** tests run on Linux, macOS and Windows.
+
+## 8. Release
+
+- Tags `vX.Y.Z` on `main` trigger `.github/workflows/release.yml`, which runs GoReleaser (`.goreleaser.yaml`): `CGO_ENABLED=0` builds for Linux, macOS and Windows on amd64 and arm64, `.tar.gz` archives (`.zip` on Windows), and a `checksums.txt`.
+- The version comes from `-ldflags -X main.version=…` in release builds, else from the module version in the build info (`go install …@vX.Y.Z`), else `dev`. It is printed by `version` and reported as the MCP server version.

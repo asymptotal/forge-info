@@ -1,3 +1,12 @@
-/infomcp
-/infomcp.exe
+# Build output
+/forge-info-mcp
+/forge-info-mcp.exe
 /dist/
+
+# Test and coverage output
+*.out
+*.test
+
+# Local, per-developer settings
+.claude/settings.local.json
+.DS_Store

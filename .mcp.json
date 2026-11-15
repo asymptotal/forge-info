@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "info": {
+      "type": "stdio",
+      "command": "go",
+      "args": [
+        "run",
+        "./cmd/forge-info-mcp",
+        "serve"
+      ],
+      "env": {}
+    }
+  }
+}

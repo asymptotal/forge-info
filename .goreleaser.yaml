@@ -1,0 +1,33 @@
+# Release builds for forge-info-mcp (TDD.md §8). Run by .github/workflows/release.yml on v* tags.
+version: 2
+
+project_name: forge-info-mcp
+
+builds:
+  - main: ./cmd/forge-info-mcp
+    binary: forge-info-mcp
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  filters:
+    exclude:
+      - "^Merge "
