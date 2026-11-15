@@ -142,7 +142,7 @@ func relPath(area, name string) string { return area + "/" + name + ".md" }
 // resolve maps a validated name to a file path under area, never following
 // symlinks and confirming exact on-disk names via directory listings. It
 // reports whether the file exists as a regular file. If the path is blocked by
-// something infomcp doesn't manage or can't address exactly (a symlink, a file
+// something forge-info-mcp doesn't manage or can't address exactly (a symlink, a file
 // where a directory is needed, a differently-cased name), it returns a
 // conflict problem: reads treat that as not found, writes refuse.
 func (s *Store) resolve(area, name string) (string, bool, *Problem) {
@@ -190,7 +190,7 @@ func (s *Store) resolve(area, name string) (string, bool, *Problem) {
 			return dir, true, nil
 		case last, !fi.IsDir():
 			return "", false, newProblem(CodeConflict, rel,
-				"path is blocked by something infomcp doesn't manage (a symlink or a non-.md file); a person must remove it")
+				"path is blocked by something forge-info-mcp doesn't manage (a symlink or a non-.md file); a person must remove it")
 		}
 	}
 	return filepath.Join(append([]string{s.root, area}, segs...)...) + ".md", false, nil
@@ -225,7 +225,7 @@ func writeFile(path string, data []byte) error {
 
 // ---- scanning ----------------------------------------------------------------
 
-// managed reports whether infomcp owns a directory entry: a regular file whose
+// managed reports whether forge-info-mcp owns a directory entry: a regular file whose
 // name ends in .md and doesn't start with a dot. Everything else is ignored.
 func managed(de fs.DirEntry) bool {
 	n := de.Name()

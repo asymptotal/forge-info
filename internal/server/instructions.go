@@ -21,7 +21,7 @@ const (
 	descTagDrop   = "Delete a tag, including a broken one. Fails with tag_in_use (details.entries) if valid entries still use it; update those entries first."
 )
 
-const rules = `infomcp is a file-backed knowledge store for this project: many short entries, each covering one concept, with a one-line description and 1 to 5 tags. Tags have descriptions too. Entries live in .info/ and are read and written only through these tools.
+const rules = `forge-info-mcp is a file-backed knowledge store for this project: many short entries, each covering one concept, with a one-line description and 1 to 5 tags. Tags have descriptions too. Entries live in .info/ and are read and written only through these tools.
 
 Working rules:
 - Search (entry_search) before working in an area and before adding anything; fetch only the entries you need with entry_get.

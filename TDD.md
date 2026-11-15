@@ -1,4 +1,4 @@
-# infomcp: technical design (MVP)
+# forge-info-mcp: technical design (MVP)
 
 How the [PRD](PRD.md) is built. Where this document is silent, apply the shared rules in §3 and §4; don't invent case-by-case behaviour.
 
@@ -16,7 +16,7 @@ How the [PRD](PRD.md) is built. Where this document is silent, apply the shared 
 
 - **Root:** `--root <dir>` names the `.info` directory explicitly. Without it, the server walks up from the working directory to the first `.info`. If that directory doesn't contain `entries/` and `tags/`, the server refuses to start.
 - **`init [<dir>]`** creates `<dir>/.info/entries/.gitkeep` and `<dir>/.info/tags/.gitkeep`. It fails if `.info` already exists.
-- **Managed files:** infomcp owns every regular file whose name ends in `.md` and doesn't start with `.`, found directly in `tags/` or in `entries/` through directories that are neither symlinks nor dot-named. Everything else is ignored: never reported, served, written or deleted (`.gitkeep`, `.DS_Store`, temp files, `README.txt`, symlinks, subdirectories of `tags/`).
+- **Managed files:** forge-info-mcp owns every regular file whose name ends in `.md` and doesn't start with `.`, found directly in `tags/` or in `entries/` through directories that are neither symlinks nor dot-named. Everything else is ignored: never reported, served, written or deleted (`.gitkeep`, `.DS_Store`, temp files, `README.txt`, symlinks, subdirectories of `tags/`).
 - A managed file whose path isn't a valid name (wrong case, too deep, a Windows device name) is reported as `invalid` with `reason: bad_name`. The tools can't rename files, so a person must rename or remove it.
 
 ## 2. File formats
@@ -92,7 +92,7 @@ One shape for both, with the same codes:
 | `parse_error` | An entry's frontmatter doesn't follow §2 (files only). |
 | `not_found` | The target entry or tag doesn't exist. |
 | `exists` | The `_add` target already exists, valid or broken. |
-| `conflict` | A write's target path is blocked by something infomcp can't address exactly (§3 Paths) (writes only). |
+| `conflict` | A write's target path is blocked by something forge-info-mcp can't address exactly (§3 Paths) (writes only). |
 | `tag_in_use` | `tag_drop` on a tag that valid entries use. `details.entries` lists them. |
 | `invalid_input` | Bad tool arguments, e.g. `limit` out of range. |
 | `io_error` | The file system failed. |
@@ -142,7 +142,7 @@ Each tool description restates the rules that apply to it.
 ## 6. Code layout
 
 ```
-cmd/infomcp/        CLI: serve, init; exit 0 on success, 2 on error
+cmd/forge-info-mcp/ CLI: serve, init, version; exit 0 on success, 2 on error
 internal/store/     validate.go (§3), format.go (parse/render), store.go (scan, CRUD)
 internal/server/    MCP tools, schemas, instructions; thin wrapper over store
 ```
@@ -157,3 +157,8 @@ internal/server/    MCP tools, schemas, instructions; thin wrapper over store
 - **Store tests:** run against `t.TempDir()` fixtures, covering broken managed files, invalid file names, and ignored files (symlinks, dotfiles, non-`.md` files).
 - **Server tests:** end to end over the SDK's in-memory transport.
 - **CI:** tests run on Linux, macOS and Windows.
+
+## 8. Release
+
+- Tags `vX.Y.Z` on `main` trigger `.github/workflows/release.yml`, which runs GoReleaser (`.goreleaser.yaml`): `CGO_ENABLED=0` builds for Linux, macOS and Windows on amd64 and arm64, `.tar.gz` archives (`.zip` on Windows), and a `checksums.txt`.
+- The version comes from `-ldflags -X main.version=…` in release builds, else from the module version in the build info (`go install …@vX.Y.Z`), else `dev`. It is printed by `version` and reported as the MCP server version.

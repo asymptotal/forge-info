@@ -19,6 +19,12 @@ func TestRun(t *testing.T) {
 	if c, _, e := exec(); c != 2 || e == "" {
 		t.Errorf("no args: %d %q", c, e)
 	}
+	if c, out, _ := exec("version"); c != 0 || strings.TrimSpace(out) == "" {
+		t.Errorf("version: %d %q", c, out)
+	}
+	if c, _, _ := exec("version", "x"); c != 2 {
+		t.Errorf("version with args: %d", c)
+	}
 	if c, _, _ := exec("bogus"); c != 2 {
 		t.Errorf("bogus: %d", c)
 	}

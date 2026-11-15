@@ -17,7 +17,7 @@ func New(st *store.Store, version string) (*mcp.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := mcp.NewServer(&mcp.Implementation{Name: "infomcp", Version: version},
+	s := mcp.NewServer(&mcp.Implementation{Name: "forge-info-mcp", Version: version},
 		&mcp.ServerOptions{Instructions: instr})
 
 	mcp.AddTool(s, &mcp.Tool{Name: "entry_search", Description: descSearch}, h(func(in searchIn) (*store.SearchResult, error) {

@@ -1,4 +1,4 @@
-// Command infomcp serves a file-backed knowledge store over MCP.
+// Command forge-info-mcp serves a file-backed knowledge store over MCP.
 package main
 
 import (
@@ -7,17 +7,32 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 
 	"github.com/asymptotal/forge-info/internal/server"
 	"github.com/asymptotal/forge-info/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const version = "0.1.0"
+// version is set by release builds with -ldflags "-X main.version=…".
+var version = ""
+
+// getVersion returns the release version, else the module version recorded
+// by go install, else "dev".
+func getVersion() string {
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "dev"
+}
 
 const usage = `usage:
-  infomcp serve [--root <dir>]   serve the store over MCP on stdio (root: the .info dir)
-  infomcp init [<dir>]           create <dir>/.info (default: current directory)
+  forge-info-mcp serve [--root <dir>]   serve the store over MCP on stdio (root: the .info dir)
+  forge-info-mcp init [<dir>]           create <dir>/.info (default: current directory)
+  forge-info-mcp version                print the version
 `
 
 func main() {
@@ -35,12 +50,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = serve(args[1:], stdin, stdout, stderr)
 	case "init":
 		err = initCmd(args[1:], stderr)
+	case "version":
+		if len(args) > 1 {
+			err = fmt.Errorf("version takes no arguments")
+		} else {
+			fmt.Fprintln(stdout, getVersion())
+		}
 	default:
-		fmt.Fprintf(stderr, "infomcp: unknown command %q\n%s", args[0], usage)
+		fmt.Fprintf(stderr, "forge-info-mcp: unknown command %q\n%s", args[0], usage)
 		return 2
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "infomcp: %v\n", err)
+		fmt.Fprintf(stderr, "forge-info-mcp: %v\n", err)
 		return 2
 	}
 	return 0
@@ -89,7 +110,7 @@ func serve(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	srv, err := server.New(st, version)
+	srv, err := server.New(st, getVersion())
 	if err != nil {
 		return err
 	}
