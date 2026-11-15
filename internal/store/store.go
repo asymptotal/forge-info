@@ -141,8 +141,10 @@ func relPath(area, name string) string { return area + "/" + name + ".md" }
 
 // resolve maps a validated name to a file path under area, never following
 // symlinks and confirming exact on-disk names via directory listings. It
-// reports whether the file exists as a regular file. Anything else on the way
-// (symlink, wrong type, differently-cased name) is a stray_file problem.
+// reports whether the file exists as a regular file. If the path is blocked by
+// something infomcp doesn't manage or can't address exactly (a symlink, a file
+// where a directory is needed, a differently-cased name), it returns a
+// conflict problem: reads treat that as not found, writes refuse.
 func (s *Store) resolve(area, name string) (string, bool, *Problem) {
 	segs := strings.Split(name, "/")
 	dir := filepath.Join(s.root, area)
@@ -175,8 +177,8 @@ func (s *Store) resolve(area, name string) (string, bool, *Problem) {
 			break
 		}
 		if found != want {
-			return "", false, newProblem(CodeStrayFile, strings.TrimSuffix(rel, want)+found,
-				"name differs from %q only in case", want)
+			return "", false, newProblem(CodeConflict, strings.TrimSuffix(rel, want)+found,
+				"path is blocked by %q, which differs only in case; a person must rename or remove it", found)
 		}
 		dir = filepath.Join(dir, want)
 		fi, err := os.Lstat(dir)
@@ -187,7 +189,8 @@ func (s *Store) resolve(area, name string) (string, bool, *Problem) {
 		case last && fi.Mode().IsRegular():
 			return dir, true, nil
 		case last, !fi.IsDir():
-			return "", false, newProblem(CodeStrayFile, rel, "not a regular file or directory (symlinks are not followed)")
+			return "", false, newProblem(CodeConflict, rel,
+				"path is blocked by something infomcp doesn't manage (a symlink or a non-.md file); a person must remove it")
 		}
 	}
 	return filepath.Join(append([]string{s.root, area}, segs...)...) + ".md", false, nil
@@ -222,12 +225,22 @@ func writeFile(path string, data []byte) error {
 
 // ---- scanning ----------------------------------------------------------------
 
-func stray(rel string) Problem {
-	return *newProblem(CodeStrayFile, rel, "not a regular .md file with a valid name, or nested too deeply")
+// managed reports whether infomcp owns a directory entry: a regular file whose
+// name ends in .md and doesn't start with a dot. Everything else is ignored.
+func managed(de fs.DirEntry) bool {
+	n := de.Name()
+	return de.Type().IsRegular() && strings.HasSuffix(n, ".md") && !strings.HasPrefix(n, ".")
 }
 
-// listTags returns the names of existing tags (regular files with valid names)
-// and a stray_file problem for everything else.
+// badFileName is the problem for a managed file whose name isn't a valid name.
+func badFileName(field, rel string) Problem {
+	p := newProblem(CodeInvalid, rel, "%s: file name is not valid; a person must rename or remove it", field)
+	p.Details = map[string]any{"field": field, "reason": "bad_name"}
+	return *p
+}
+
+// listTags returns the names of existing tags (managed files with valid
+// names) and a bad_name problem for each managed file with an invalid name.
 func (s *Store) listTags() ([]string, []Problem, error) {
 	des, err := os.ReadDir(filepath.Join(s.root, tagsDir))
 	if err != nil {
@@ -236,17 +249,15 @@ func (s *Store) listTags() ([]string, []Problem, error) {
 	var names []string
 	var probs []Problem
 	for _, de := range des {
-		n := de.Name()
-		if strings.HasPrefix(n, ".") {
+		if !managed(de) {
 			continue
 		}
-		if stem, ok := strings.CutSuffix(n, ".md"); ok && de.Type().IsRegular() {
-			if name, p := checkName(tagName, "name", stem); p == nil && name == stem {
-				names = append(names, name)
-				continue
-			}
+		stem := strings.TrimSuffix(de.Name(), ".md")
+		if name, p := checkName(tagName, "name", stem); p == nil && name == stem {
+			names = append(names, name)
+		} else {
+			probs = append(probs, badFileName("name", tagsDir+"/"+de.Name()))
 		}
-		probs = append(probs, stray(tagsDir+"/"+n))
 	}
 	return names, probs, nil
 }
@@ -263,8 +274,9 @@ func (s *Store) tagSet() (map[string]bool, error) {
 	return set, nil
 }
 
-// listEntryIDs walks entries/ and returns the ids of candidate files plus
-// stray_file problems.
+// listEntryIDs walks the real (non-symlink, non-dot) directories under
+// entries/ and returns the ids of managed files, plus a bad_name problem for
+// each managed file whose path isn't a valid id (bad name, wrong case, too deep).
 func (s *Store) listEntryIDs(segs []string, ids *[]string, probs *[]Problem) error {
 	rel := strings.Join(append([]string{entriesDir}, segs...), "/")
 	des, err := os.ReadDir(filepath.Join(append([]string{s.root, entriesDir}, segs...)...))
@@ -273,30 +285,20 @@ func (s *Store) listEntryIDs(segs []string, ids *[]string, probs *[]Problem) err
 	}
 	for _, de := range des {
 		n := de.Name()
-		if strings.HasPrefix(n, ".") {
-			continue
-		}
 		sub := append(append([]string{}, segs...), n)
 		switch {
-		case de.Type().IsDir():
-			// A directory this deep could not hold a valid id.
-			if id, p := checkName(entryID, "id", strings.Join(sub, "/")); p != nil || id != strings.Join(sub, "/") || len(sub) >= maxSegments {
-				*probs = append(*probs, stray(rel+"/"+n))
-				continue
-			}
+		case de.Type().IsDir() && !strings.HasPrefix(n, "."):
 			if err := s.listEntryIDs(sub, ids, probs); err != nil {
 				return err
 			}
-		case de.Type().IsRegular() && strings.HasSuffix(n, ".md"):
+		case managed(de):
 			sub[len(sub)-1] = strings.TrimSuffix(n, ".md")
 			want := strings.Join(sub, "/")
-			if id, p := checkName(entryID, "id", want); p != nil || id != want {
-				*probs = append(*probs, stray(rel+"/"+n))
-				continue
+			if id, p := checkName(entryID, "id", want); p == nil && id == want {
+				*ids = append(*ids, want)
+			} else {
+				*probs = append(*probs, badFileName("id", rel+"/"+n))
 			}
-			*ids = append(*ids, want)
-		default:
-			*probs = append(*probs, stray(rel+"/"+n))
 		}
 	}
 	return nil
@@ -515,9 +517,7 @@ func (s *Store) Get(id string) (*GetResult, error) {
 		return nil, p
 	}
 	path, exists, p := s.resolve(entriesDir, id)
-	if p != nil && p.Code == CodeStrayFile {
-		return &GetResult{Problems: []Problem{*p}}, nil
-	} else if p != nil {
+	if p != nil && p.Code != CodeConflict {
 		return nil, p
 	}
 	rel := relPath(entriesDir, id)
@@ -617,7 +617,7 @@ func (s *Store) DropEntry(id string) (*DropEntryResult, error) {
 	}
 	rel := relPath(entriesDir, id)
 	path, exists, p := s.resolve(entriesDir, id)
-	if p != nil {
+	if p != nil && p.Code != CodeConflict {
 		return nil, p
 	}
 	if !exists {
@@ -628,7 +628,7 @@ func (s *Store) DropEntry(id string) (*DropEntryResult, error) {
 	}
 	stop := filepath.Join(s.root, entriesDir)
 	for dir := filepath.Dir(path); dir != stop && strings.HasPrefix(dir, stop); dir = filepath.Dir(dir) {
-		if os.Remove(dir) != nil { // not empty (dotfiles count as content)
+		if os.Remove(dir) != nil { // not empty (dotfiles and unmanaged files count as content)
 			break
 		}
 	}
@@ -746,7 +746,7 @@ func (s *Store) DropTag(name string) (*DropTagResult, error) {
 	}
 	rel := relPath(tagsDir, name)
 	path, exists, p := s.resolve(tagsDir, name)
-	if p != nil {
+	if p != nil && p.Code != CodeConflict {
 		return nil, p
 	}
 	if !exists {

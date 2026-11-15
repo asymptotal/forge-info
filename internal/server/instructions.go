@@ -12,7 +12,7 @@ const maxTagsWithDescriptions = 100
 const (
 	descSearch    = "Search entries. Every whitespace-separated term in query must appear (case-insensitive substring) in the id, description, a tag name or the body; tags requires all named tags (unknown tag: unknown_tag). Ordered by number of matches, then id; no query lists by id. Returns summaries (id, description, tags), total and truncated; broken entries are left out and reported in problems. Search before working in an area and before adding."
 	descGet       = "Get one entry by id: description, tags and body. If the file is broken, entry is null, problems says why and raw holds the file text so it can be fixed with entry_update."
-	descAdd       = "Add a new entry. One concept per entry; record why, not what. Description: one line, max 100 chars, written so an agent can triage from it. Tags: 1 to 5 existing tags (check tag_list; add missing ones with tag_add). Body: Markdown, max 2000 chars, no headings. Fails with exists if the id is taken (even by a broken file); search first and prefer entry_update."
+	descAdd       = "Add a new entry. One concept per entry; record why, not what. Description: one line, max 100 chars, written so an agent can triage from it. Tags: 1 to 5 existing tags (check tag_list; add missing ones with tag_add). Body: Markdown, max 2000 chars, no headings. Fails with exists if the id is taken (even by a broken file), or conflict if the path is blocked by a file a person must move; search first and prefer entry_update."
 	descUpdate    = "Replace an entry completely (description, tags and body are all required), including a broken one. changed is false and nothing is written if the result is identical. Same rules as entry_add."
 	descDrop      = "Delete an entry by id, including a broken one."
 	descTagList   = "List all tags with description and count of valid entries using them, sorted by name. A tag with a broken description shows null. Check this before tag_add."
@@ -29,7 +29,7 @@ Working rules:
 - One concept per entry. Record why, not what.
 - Write descriptions an agent can triage from without opening the entry.
 - No headings in bodies.
-- Fix problems reported in results (broken entries or tags) with entry_update, tag_update or the drop tools.`
+- Fix problems reported in results (broken entries or tags) with entry_update, tag_update or the drop tools. A file with an invalid name (reason bad_name) can only be renamed or removed by a person: tell the user.`
 
 func instructions(st *store.Store) (string, error) {
 	res, err := st.ListTags()

@@ -18,7 +18,8 @@ The files live in the repo under `.info/`, so they are reviewed and versioned li
 2. **The tool is the interface.** Agents use the MCP tools, not the files.
 3. **Normalise the obvious, reject the rest.** Surrounding whitespace is trimmed, line endings are normalised, and names are case-insensitive. Anything else that's wrong is rejected with a clear error.
 4. **One bad file never blocks the rest.** Reads skip broken files and report them. Writes check only what they write.
-5. **Small entries.** One concept per entry. Record why, not what.
+5. **Own only what is ours.** infomcp manages the `.md` files under `.info/entries/` and `.info/tags/`. Anything else people put in `.info/` (other files, symlinks, dotfiles, subdirectories of `tags/`) is ignored: never reported, served or touched. A managed file that is broken is always reported.
+6. **Small entries.** One concept per entry. Record why, not what.
 
 ## Users and use
 
@@ -49,6 +50,6 @@ In rough order, each one additive (MVP files stay valid): git-backed staleness; 
 ## Done when
 
 - An agent in Claude Code can find, read, add, update and drop entries and tags.
-- Broken or hand-edited files are reported, and can be fixed through the tools.
+- Broken managed files are reported. Broken content can be fixed through the tools; a file with an invalid name is reported for a person to rename or remove.
 - The same content always produces the same bytes on disk.
 - Tests pass on Linux, macOS and Windows.

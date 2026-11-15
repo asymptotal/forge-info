@@ -245,24 +245,30 @@ func TestBrokenFilesOfEachKind(t *testing.T) {
 		t.Errorf("ids = %v", ids(res))
 	}
 	want := []string{
-		"entries/Upper.md|stray_file",
-		"entries/a/b/c|stray_file",
+		// Managed files (regular, .md) with bad names are flagged; readme.txt,
+		// tags/sub/ and dotfiles are not ours and are ignored.
+		"entries/Upper.md|invalid",
+		"entries/a/b/c/too-deep.md|invalid",
 		"entries/emptybody.md|invalid",
 		"entries/longdesc.md|invalid",
 		"entries/noparse.md|parse_error",
 		"entries/notags.md|invalid",
-		"entries/nul.md|stray_file",
-		"entries/readme.txt|stray_file",
+		"entries/nul.md|invalid",
 		"entries/unknown.md|unknown_tag",
-		"tags/Bad.md|stray_file",
+		"tags/Bad.md|invalid",
 		"tags/empty.md|invalid",
-		"tags/sub|stray_file",
 	}
 	if got := problemKeys(res.Problems); !reflect.DeepEqual(got, want) {
 		t.Errorf("problems:\n got %v\nwant %v", got, want)
 	}
 	if res.Problems[3].Details["field"] != "description" {
 		t.Errorf("details: %+v", res.Problems[3])
+	}
+	if d := res.Problems[0].Details; d["field"] != "id" || d["reason"] != "bad_name" {
+		t.Errorf("bad file name details: %+v", res.Problems[0])
+	}
+	if d := res.Problems[8].Details; d["field"] != "name" || d["reason"] != "bad_name" {
+		t.Errorf("bad tag file name details: %+v", res.Problems[8])
 	}
 
 	tl, err := s.ListTags()
@@ -298,14 +304,21 @@ func TestUppercaseFilenameNotServed(t *testing.T) {
 	s := newStore(t)
 	mustTag(t, s, "a")
 	put(t, s, "entries/Foo.md", entryFile("d", "a", "body"))
-	g, err := s.Get("foo")
-	if err != nil || g.Entry != nil || g.Raw != nil || len(g.Problems) != 1 || g.Problems[0].Code != CodeStrayFile {
-		t.Errorf("get foo: %+v %v", g, err)
+	// Same behaviour on case-sensitive and case-insensitive file systems:
+	// foo doesn't exist, Foo.md is flagged, and writes to foo are refused.
+	if _, err := s.Get("foo"); code(err) != CodeNotFound {
+		t.Errorf("get foo: %v", err)
 	}
-	if _, err := s.AddEntry("foo", "d", []string{"a"}, "b"); code(err) != CodeStrayFile {
+	if res, _ := s.Search("", nil, DefaultLimit); !reflect.DeepEqual(problemKeys(res.Problems), []string{"entries/Foo.md|invalid"}) {
+		t.Errorf("problems = %v", problemKeys(res.Problems))
+	}
+	if _, err := s.AddEntry("foo", "d", []string{"a"}, "b"); code(err) != CodeConflict {
 		t.Errorf("add foo over Foo.md: %v", err)
 	}
-	if _, err := s.DropEntry("foo"); code(err) != CodeStrayFile {
+	if _, err := s.UpdateEntry("foo", "d", []string{"a"}, "b"); code(err) != CodeConflict {
+		t.Errorf("update foo over Foo.md: %v", err)
+	}
+	if _, err := s.DropEntry("foo"); code(err) != CodeNotFound {
 		t.Errorf("drop foo: %v", err)
 	}
 	if !exists(s, "entries/Foo.md") {
@@ -330,27 +343,26 @@ func TestSymlinks(t *testing.T) {
 	if len(res.Entries) != 0 {
 		t.Errorf("symlinked entries served: %v", ids(res))
 	}
-	want := []string{"entries/dirlink|stray_file", "entries/link.md|stray_file", "tags/tl.md|stray_file"}
-	if got := problemKeys(res.Problems); !reflect.DeepEqual(got, want) {
+	// Symlinks aren't ours: not reported, not served, never written through.
+	if got := problemKeys(res.Problems); len(got) != 0 {
 		t.Errorf("problems = %v", got)
 	}
-	g, err := s.Get("link")
-	if err != nil || g.Entry != nil || g.Raw != nil || g.Problems[0].Code != CodeStrayFile {
-		t.Errorf("get link: %+v %v", g, err)
+	if _, err := s.Get("link"); code(err) != CodeNotFound {
+		t.Errorf("get link: %v", err)
 	}
-	if g, _ := s.Get("dirlink/in"); g.Entry != nil || g.Problems[0].Code != CodeStrayFile {
-		t.Errorf("get through dir link: %+v", g)
+	if _, err := s.Get("dirlink/in"); code(err) != CodeNotFound {
+		t.Errorf("get through dir link: %v", err)
 	}
-	if _, err := s.AddEntry("dirlink/new", "d", []string{"a"}, "b"); code(err) != CodeStrayFile {
+	if _, err := s.AddEntry("dirlink/new", "d", []string{"a"}, "b"); code(err) != CodeConflict {
 		t.Errorf("add through dir link: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outDir, "new.md")); err == nil {
 		t.Error("wrote through symlink")
 	}
-	if _, err := s.AddEntry("link", "d", []string{"a"}, "b"); code(err) != CodeStrayFile {
+	if _, err := s.AddEntry("link", "d", []string{"a"}, "b"); code(err) != CodeConflict {
 		t.Errorf("add over link: %v", err)
 	}
-	if _, err := s.DropTag("tl"); code(err) != CodeNotFound && code(err) != CodeStrayFile {
+	if _, err := s.DropTag("tl"); code(err) != CodeNotFound {
 		t.Errorf("drop tag link: %v", err)
 	}
 	if err := os.Symlink(outDir, filepath.Join(s.root, "entries", "dl2")); err == nil {
@@ -574,5 +586,30 @@ func TestReadAcceptsNonCanonicalFiles(t *testing.T) {
 	if err != nil || g.Entry == nil || g.Entry.Description != "hi" || g.Entry.Body != "body" ||
 		!reflect.DeepEqual(g.Entry.Tags, []string{"a", "b"}) {
 		t.Errorf("%+v %v", g, err)
+	}
+}
+
+func TestUnmanagedFilesIgnored(t *testing.T) {
+	s := newStore(t)
+	mustTag(t, s, "a")
+	put(t, s, "entries/notes", "a person's file, no extension")
+	put(t, s, "entries/d/README.txt", "a person's notes")
+	if _, err := s.AddEntry("d/x", "d", []string{"a"}, "b"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Search("", nil, DefaultLimit)
+	if err != nil || len(res.Problems) != 0 || !reflect.DeepEqual(ids(res), []string{"d/x"}) {
+		t.Fatalf("search: %v %+v", err, res)
+	}
+	// A file where a directory is needed blocks the write.
+	if _, err := s.AddEntry("notes/x", "d", []string{"a"}, "b"); code(err) != CodeConflict {
+		t.Errorf("add through file: %v", err)
+	}
+	// Dropping leaves a directory that still holds unmanaged files.
+	if _, err := s.DropEntry("d/x"); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(s, "entries/d/README.txt") || !exists(s, "entries/notes") {
+		t.Error("unmanaged files must be untouched")
 	}
 }
